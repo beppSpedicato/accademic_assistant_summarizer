@@ -1,0 +1,5 @@
+.venv/
+already_summarized/
+__pycache__/
+chroma_db/
+summaries/
