@@ -34,7 +34,7 @@ python rag_summary.py --init
 ### 2) Summarize a single PDF
 
 ```bash
-python rag_summary.py --summarize "01-SparseMatrices.pdf" --url "http://localhost:4141/v1" --model "your-model"
+python rag_summary.py --summarize "example.pdf" --url "http://localhost:8000/v1" --model "your-model"
 ```
 
 Outputs a Markdown file under `./summaries/` (e.g. `summaries/01-SparseMatrices.md`).
@@ -60,4 +60,3 @@ python rag_summary.py --run-all --url "http://localhost:4141/v1" --model "your-m
 ## Notes
 
 - The summaries are written to the `summaries/` folder by default.
-- After generating a summary, remember to append an entry to `changelog.md` as described in `CLAUDE.md`.
