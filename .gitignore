@@ -3,3 +3,5 @@ already_summarized/
 __pycache__/
 chroma_db/
 summaries/
+chroma_db_summaries/
+*.pyc

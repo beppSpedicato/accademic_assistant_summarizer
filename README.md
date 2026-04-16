@@ -4,7 +4,6 @@ A small CLI utility to:
 
 - build a local **Chroma** knowledge base from all PDFs in this folder
 - query an **OpenAI-compatible** chat endpoint to generate **GitHub-friendly Markdown** summaries
-- follow the course ingestion format described in `CLAUDE.md` (Key Concepts / Detailed Notes / Study Questions)
 
 ## Purpose
 
@@ -23,7 +22,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-### 1) Rebuild the RAG database (fresh ingest)
+### A) Build the PDFs RAG database (fresh ingest)
 
 This scans `*.pdf`, extracts text with `pypdf`, and writes a Chroma DB to `./chroma_db`.
 
@@ -31,15 +30,15 @@ This scans `*.pdf`, extracts text with `pypdf`, and writes a Chroma DB to `./chr
 python rag_summary.py --init
 ```
 
-### 2) Summarize a single PDF
+### B) Summarize a single PDF
 
 ```bash
-python rag_summary.py --summarize "example.pdf" --url "http://localhost:8000/v1" --model "your-model"
+python rag_summary.py --summarize "example.pdf" --url "http://localhost:4141/v1" --model "your-model"
 ```
 
 Outputs a Markdown file under `./summaries/` (e.g. `summaries/01-SparseMatrices.md`).
 
-### 3) Full run: rebuild RAG + summarize every PDF
+### C) Full run: rebuild PDF RAG + summarize every PDF
 
 This is the “one command” mode: it rebuilds the DB, then loops through all matching PDFs and writes one `.md` per PDF.
 
@@ -47,7 +46,31 @@ This is the “one command” mode: it rebuilds the DB, then loops through all m
 python rag_summary.py --run-all --url "http://localhost:4141/v1" --model "your-model"
 ```
 
-### Options
+### D) Chat over the generated summaries (RAG Q&A)
+
+After you have generated Markdown files under `./summaries/`, you can build a separate RAG index over those summaries and ask questions interactively.
+
+1) Build/update the summaries index (incremental)
+
+```bash
+python rag_chat_summaries.py --init
+```
+
+This creates/updates:
+- `./chroma_db_summaries/` (Chroma DB for summaries)
+- `./summaries/manifest.json` (path + sha256, for safe incremental updates)
+
+2) Start interactive chat
+
+```bash
+python rag_chat_summaries.py --chat --url "http://localhost:4141/v1" --model "your-model"
+```
+
+REPL commands:
+- `/reindex` rebuilds/updates the summaries index
+- `/exit` quits
+
+### Options (PDF summarizer)
 
 - `--init`: rebuild the RAG database from all PDFs
 - `--summarize <filename.pdf>`: summarize one PDF
@@ -57,6 +80,16 @@ python rag_summary.py --run-all --url "http://localhost:4141/v1" --model "your-m
 - `--model <model>`: model name (default: `gpt-5.2`)
 - `--api-key <key>`: API key if your proxy requires one (default: `dummy`)
 
+### Options (summaries chat)
+
+- `--init`: build/update the summaries RAG index + manifest
+- `--chat`: start the interactive REPL
+- `--md-glob <glob>`: which markdown files to index (default: `summaries/*.md`)
+- `--chunk-size <n>` / `--overlap <n>`: chunking settings for indexing
+- `--k <n>`: number of retrieved chunks per question
+- `--url`, `--model`, `--api-key`: same meaning as above
+
 ## Notes
 
 - The summaries are written to the `summaries/` folder by default.
+- The summaries chat index is stored separately in `./chroma_db_summaries`.
