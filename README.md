@@ -89,6 +89,45 @@ REPL commands:
 - `--k <n>`: number of retrieved chunks per question
 - `--url`, `--model`, `--api-key`: same meaning as above
 
+## Export commands (add to PATH)
+
+This repo includes two wrapper commands under `./bin/`:
+
+- `bin/rag-pdf` → runs `rag_summary.py` (PDF → Markdown summaries)
+- `bin/rag-chat` → runs `rag_chat_summaries.py` (chat over `summaries/*.md`)
+
+### Make the commands available anywhere
+
+Add this repo's `bin/` directory to your shell `PATH`.
+
+**zsh** (`~/.zshrc`):
+
+```bash
+export PATH="/absolute/path/to/this/repo/bin:$PATH"
+```
+
+Then restart your terminal (or `source ~/.zshrc`) and you can run:
+
+```bash
+rag-pdf --help
+rag-chat --help
+```
+
+### Running against any folder (`--workdir`)
+
+Both commands accept `--workdir` to operate on a target directory, even if you run the command from somewhere else.
+
+Examples:
+
+```bash
+# Summarize PDFs located in /path/to/lectures
+rag-pdf --workdir "/path/to/lectures" --run-all --url "http://localhost:4141/v1" --model "your-model"
+
+# Build the summaries index and start a chat over /path/to/lectures/summaries/*.md
+rag-chat --workdir "/path/to/lectures" --init
+rag-chat --workdir "/path/to/lectures" --chat --url "http://localhost:4141/v1" --model "your-model"
+```
+
 ## Notes
 
 - The summaries are written to the `summaries/` folder by default.

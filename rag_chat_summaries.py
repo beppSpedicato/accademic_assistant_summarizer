@@ -228,6 +228,12 @@ if __name__ == "__main__":
         description="Chat with a RAG index built from summaries/*.md via an OpenAI-compatible API"
     )
     parser.add_argument(
+        "--workdir",
+        type=str,
+        default=None,
+        help="Directory to run in (defaults to current directory)",
+    )
+    parser.add_argument(
         "--init",
         action="store_true",
         help="Build/update the summaries RAG index and manifest",
@@ -276,6 +282,11 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    if args.workdir:
+        import os
+
+        os.chdir(args.workdir)
 
     if args.init:
         update_index(md_glob=args.md_glob, chunk_size=args.chunk_size, overlap=args.overlap)

@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run the PDF RAG summarizer from any directory.
+# Default workdir is the current directory.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+WORKDIR=""
+ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --workdir)
+      WORKDIR="$2"
+      shift 2
+      ;;
+    *)
+      ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -n "$WORKDIR" ]]; then
+  cd "$WORKDIR"
+fi
+
+PY="$REPO_ROOT/.venv/bin/python"
+
+if [[ -x "$PY" ]]; then
+  exec "$PY" "$REPO_ROOT/rag_summary.py" "${ARGS[@]}"
+fi
+
+exec python "$REPO_ROOT/rag_summary.py" "${ARGS[@]}"

@@ -142,6 +142,12 @@ if __name__ == "__main__":
         description="Create RAG from PDFs and generate summaries via an OpenAI-compatible API"
     )
     parser.add_argument(
+        "--workdir",
+        type=str,
+        default=None,
+        help="Directory to run in (defaults to current directory)",
+    )
+    parser.add_argument(
         "--init",
         action="store_true",
         help="Initialize the RAG database from all PDFs in the directory",
@@ -173,6 +179,9 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    if args.workdir:
+        os.chdir(args.workdir)
 
     if args.init:
         _ensure_db(pdf_glob=args.pdf_glob, rebuild=True)
