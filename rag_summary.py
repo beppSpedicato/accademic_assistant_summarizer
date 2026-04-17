@@ -5,6 +5,7 @@ from pathlib import Path
 
 from utils.chroma_utils import get_chroma
 from langchain_openai import ChatOpenAI
+from langchain_chroma import Chroma
 from pypdf import PdfReader
 
 from utils.math_format import normalize_math_delimiters
@@ -21,7 +22,8 @@ def _load_pdf_pages(pdf_path: str):
     reader = PdfReader(pdf_path)
     texts = []
     for page in reader.pages:
-        t = page.extract_text() or ""
+        raw = page.extract_text()
+        t = raw if isinstance(raw, str) else ""
         if t.strip():
             texts.append(t)
     return "\n\n".join(texts)
@@ -56,6 +58,10 @@ def _ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False):
     for pdf_file in pdf_files:
         print(f"Loading {pdf_file}...")
         text = _load_pdf_pages(pdf_file)
+        if not isinstance(text, str):
+            text = "" if text is None else str(text)
+            
+        text = text.encode("utf-8", "surrogatepass").decode("utf-8", "replace")
         if text.strip():
             texts.append(text)
             metadatas.append({"source": pdf_file})
@@ -64,10 +70,6 @@ def _ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False):
         print("No content could be extracted from the PDFs.")
         return None, pdf_files
 
-    # Store raw texts with metadata per PDF.
-    # NOTE: Chroma.from_texts is provided by the vectorstore implementation.
-    # langchain_chroma.Chroma supports the same call shape.
-    from langchain_chroma import Chroma
 
     db = Chroma.from_texts(
         texts=texts,
