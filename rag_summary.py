@@ -3,10 +3,12 @@ import glob
 import os
 from pathlib import Path
 
-from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import ChatPromptTemplate
+from utils.chroma_utils import get_chroma
 from langchain_openai import ChatOpenAI
 from pypdf import PdfReader
+
+from utils.math_format import normalize_math_delimiters
+from utils.prompts import pdf_summary_prompt
 
 
 CHROMA_PATH = "./chroma_db"
@@ -46,7 +48,7 @@ def _ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False):
 
     if os.path.exists(CHROMA_PATH):
         print(f"Using existing Chroma DB at {CHROMA_PATH}...")
-        return Chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME), pdf_files
+        return get_chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME), pdf_files
 
     print("Creating Chroma vector store from PDFs...")
     texts = []
@@ -63,6 +65,10 @@ def _ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False):
         return None, pdf_files
 
     # Store raw texts with metadata per PDF.
+    # NOTE: Chroma.from_texts is provided by the vectorstore implementation.
+    # langchain_chroma.Chroma supports the same call shape.
+    from langchain_chroma import Chroma
+
     db = Chroma.from_texts(
         texts=texts,
         metadatas=metadatas,
@@ -85,26 +91,7 @@ def create_summary(filename: str, model_name: str, base_url: str, api_key: str, 
         if db is None:
             return
 
-    prompt = ChatPromptTemplate.from_template(
-        """You are an expert academic assistant.
-
-You MUST format your response exactly like this template:
-
-# [Title of the Lecture/PDF]
-
-## Key Concepts
-- [Bullet points of the main concepts covered]
-
-## Detailed Notes
-[More detailed summary of the content, theorems, definitions, and examples]
-
-## Action Items / Study Questions
-- [Questions to test understanding]
-
-Context from the document:
-{context}
-"""
-    )
+    prompt = pdf_summary_prompt()
 
     print(f"Connecting to LLM '{model_name}' at {base_url}...")
     llm = ChatOpenAI(
@@ -134,7 +121,7 @@ Context from the document:
         output_filename = f"{file_path.stem}.md"
         
     with open(output_filename, "w", encoding="utf-8") as f:
-        f.write(response.content)
+        f.write(normalize_math_delimiters(response.content))
 
     print(f"Summary successfully created and saved to {output_filename}")
 

@@ -1,68 +1,20 @@
 import argparse
 import glob
-import hashlib
-import json
-import os
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+
+from utils.chroma_utils import get_chroma
+from utils.manifest import fingerprint, load_manifest, utc_now_iso, write_manifest_atomic
+from utils.math_format import normalize_math_delimiters
+from utils.prompts import summaries_qa_prompt
 
 
 CHROMA_PATH = "./chroma_db_summaries"
 COLLECTION_NAME = "summaries"
 MANIFEST_PATH = "./summaries/manifest.json"
 DEFAULT_MD_GLOB = "summaries/*.md"
-
-
-@dataclass(frozen=True)
-class FileFingerprint:
-    sha256: str
-    size: int
-    mtime: float
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def _sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def _fingerprint(path: Path) -> FileFingerprint:
-    st = path.stat()
-    return FileFingerprint(sha256=_sha256_file(path), size=st.st_size, mtime=st.st_mtime)
-
-
-def _load_manifest() -> Dict[str, Any]:
-    p = Path(MANIFEST_PATH)
-    if not p.exists():
-        return {"manifest_version": 1, "generated_at": None, "files": {}}
-    with open(p, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _write_manifest(manifest: Dict[str, Any]) -> None:
-    p = Path(MANIFEST_PATH)
-    p.parent.mkdir(parents=True, exist_ok=True)
-
-    manifest["manifest_version"] = int(manifest.get("manifest_version", 1))
-    manifest["generated_at"] = _utc_now_iso()
-
-    tmp = p.with_suffix(p.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
-        f.write("\n")
-    os.replace(tmp, p)
 
 
 def _split_markdown(text: str, chunk_size: int = 3000, overlap: int = 300) -> List[str]:
@@ -92,9 +44,8 @@ def _extract_title(md_text: str) -> Optional[str]:
     return None
 
 
-def _get_db() -> Chroma:
-    # Keep consistent with rag_summary.py behavior: embedding=None to avoid heavy deps.
-    return Chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME)
+def _get_db():
+    return get_chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME)
 
 
 def _read_text(path: Path) -> str:
@@ -107,7 +58,9 @@ def _relative_posix(path: Path) -> str:
 
 
 def update_index(md_glob: str = DEFAULT_MD_GLOB, chunk_size: int = 3000, overlap: int = 300) -> None:
-    manifest = _load_manifest()
+    manifest = load_manifest(
+        Path(MANIFEST_PATH), default={"manifest_version": 1, "generated_at": None, "files": {}}
+    )
     files: Dict[str, Any] = manifest.setdefault("files", {})
 
     md_paths = sorted(Path(p) for p in glob.glob(md_glob))
@@ -125,7 +78,7 @@ def update_index(md_glob: str = DEFAULT_MD_GLOB, chunk_size: int = 3000, overlap
         rel = _relative_posix(md_path)
         seen.add(rel)
 
-        fp = _fingerprint(md_path)
+        fp = fingerprint(md_path)
         prev = files.get(rel)
         if prev and prev.get("sha256") == fp.sha256:
             skipped += 1
@@ -163,44 +116,17 @@ def update_index(md_glob: str = DEFAULT_MD_GLOB, chunk_size: int = 3000, overlap
             del files[rel]
             deleted += 1
 
-    _write_manifest(manifest)
+    manifest["manifest_version"] = int(manifest.get("manifest_version", 1))
+    manifest["generated_at"] = utc_now_iso()
+    write_manifest_atomic(Path(MANIFEST_PATH), manifest)
 
     print(f"Index update complete. Updated: {updated}, skipped: {skipped}, deleted: {deleted}.")
     print(f"Chroma persist dir: {CHROMA_PATH}")
     print(f"Manifest: {MANIFEST_PATH}")
 
 
-def _build_qa_prompt() -> ChatPromptTemplate:
-    return ChatPromptTemplate.from_template(
-        """You are an expert academic tutor for computational linear algebra and related topics.
-
-You answer questions using the provided context excerpts from course summary notes.
-
-Rules:
-- If the context is sufficient, answer confidently and precisely.
-- If the context is insufficient, say what is missing and suggest what to look up (which lecture/topic), without making up details.
-- When useful, cite sources inline by mentioning the summary file name in parentheses, e.g. (source: summaries/01-SparseMatrices.md).
-
-You MUST format your response exactly like this template:
-
-# [Title]
-
-## Key Concepts
-- [Bullet points of the main concepts]
-
-## Detailed Notes
-[Explain the answer with definitions, key steps, and small examples when relevant]
-
-## Action Items / Study Questions
-- [Questions/exercises to test understanding]
-
-Context:
-{context}
-
-User question:
-{question}
-"""
-    )
+def _build_qa_prompt():
+    return summaries_qa_prompt()
 
 
 def answer_question(question: str, model_name: str, base_url: str, api_key: str, k: int = 8) -> str:
@@ -226,7 +152,7 @@ def answer_question(question: str, model_name: str, base_url: str, api_key: str,
         temperature=0.2,
     )
     resp = llm.invoke(messages)
-    return resp.content
+    return normalize_math_delimiters(resp.content)
 
 
 def _try_rich_console():
