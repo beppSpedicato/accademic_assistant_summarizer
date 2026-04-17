@@ -9,6 +9,7 @@ from utils.chroma_utils import get_chroma
 from utils.manifest import fingerprint, load_manifest, utc_now_iso, write_manifest_atomic
 from utils.math_format import normalize_math_delimiters
 from utils.prompts import summaries_qa_prompt
+from utils.vscode_utils import clean_tmp_dir, open_markdown_in_vscode_tmp
 
 
 CHROMA_PATH = "./chroma_db_summaries"
@@ -182,7 +183,7 @@ def chat_repl(model_name: str, base_url: str, api_key: str, k: int = 8) -> None:
 
     banner = (
         "Summaries Q&A (RAG). Type your question and press enter.\n"
-        "Commands: /reindex, /exit\n"
+        "Commands: /reindex, /clean, /exit\n"
     )
     if console:
         console.print(banner)
@@ -202,10 +203,18 @@ def chat_repl(model_name: str, base_url: str, api_key: str, k: int = 8) -> None:
         if q == "/reindex":
             update_index()
             continue
+        if q == "/clean":
+            clean_tmp_dir()
+            if console:
+                console.print("Cleaned .tmp/")
+            else:
+                print("Cleaned .tmp/")
+            continue
 
         try:
             out = answer_question(q, model_name=model_name, base_url=base_url, api_key=api_key, k=k)
             _render_markdown(console, out)
+            open_markdown_in_vscode_tmp(out, filename_hint="rag_chat_answer.md", unique=True)
         except Exception as e:
             msg = f"Error: {e}"
             if console:
