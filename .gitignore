@@ -6,3 +6,4 @@ summaries/
 chroma_db_summaries/
 .tmp/
 *.pyc
+.env

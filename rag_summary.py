@@ -10,6 +10,7 @@ from pypdf import PdfReader
 
 from utils.math_format import normalize_math_delimiters
 from utils.prompts import pdf_summary_prompt
+from dotenv import load_dotenv
 
 
 CHROMA_PATH = "./chroma_db"
@@ -181,6 +182,17 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    # Load environment variables from .env if present
+    repo_root = Path(__file__).resolve().parent.parent                                                                      
+    load_dotenv(repo_root / ".env")
+    
+    # Override defaults with environment variables when not explicitly provided
+    if not args.url or args.url == "http://localhost:4141/v1":
+        args.url = os.getenv("BASE_URL", args.url)
+    if not args.model or args.model == "gpt-5.2":
+        args.model = os.getenv("MODEL", args.model)
+    if not args.api_key or args.api_key == "dummy":
+        args.api_key = os.getenv("API_KEY", args.api_key)
 
     if args.workdir:
         os.chdir(args.workdir)

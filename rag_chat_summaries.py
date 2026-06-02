@@ -1,8 +1,10 @@
 import argparse
 import glob
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
 from utils.chroma_utils import get_chroma
@@ -282,6 +284,15 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    repo_root = Path(__file__).resolve().parent.parent
+    load_dotenv(repo_root / ".env")
+    # Override defaults with environment variables when not explicitly provided
+    if not args.url or args.url == "http://localhost:4141/v1":
+        args.url = os.getenv("BASE_URL", args.url)
+    if not args.model or args.model == "gpt-5.2":
+        args.model = os.getenv("MODEL", args.model)
+    if not args.api_key or args.api_key == "dummy":
+        args.api_key = os.getenv("API_KEY", args.api_key)
 
     if args.workdir:
         import os
