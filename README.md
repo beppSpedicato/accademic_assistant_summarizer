@@ -96,6 +96,37 @@ This repo includes two wrapper commands under `./bin/`:
 - `bin/rag-pdf` → runs `rag_summary.py` (PDF → Markdown summaries)
 - `bin/rag-chat` → runs `rag_chat_summaries.py` (chat over `summaries/*.md`)
 
+### Claude Code custom skills
+
+The repository provides two custom Claude Code skills that wrap these scripts, allowing you to invoke them via the `/` skill syntax from any directory.
+
+- **rag-chat** – runs `./bin/rag-chat`
+- **rag-pdf** – runs `./bin/rag-pdf`
+
+Add the following JSON to your Claude Code project `settings.json` under the `customSkills` key:
+
+```json
+{
+  "customSkills": {
+    "rag-chat": {
+      "description": "Run the rag‑chat command from the repository",
+      "command": "./bin/rag-chat"
+    },
+    "rag-pdf": {
+      "description": "Run the rag‑pdf command from the repository",
+      "command": "./bin/rag-pdf"
+    }
+  }
+}
+```
+
+After restarting Claude Code the skills can be used as:
+
+```bash
+! /rag-pdf --summarize "01-SparseMatrices.pdf" --url "http://localhost:4141/v1" --model "your-model"
+! /rag-chat --run-all --url "http://localhost:4141/v1" --model "your-model"
+```
+
 ### Make the commands available anywhere
 
 Add this repo's `bin/` directory to your shell `PATH`.
