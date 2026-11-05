@@ -1,165 +1,90 @@
-# Local RAG Summarizer (OpenAI-Compatible API)
+# academic-assistant
 
-A small CLI utility to:
+A command-line tool that turns lecture PDFs into **GitHub-friendly Markdown summaries** and lets you **chat over those summaries**, using a local **Chroma** RAG index and any **OpenAI-compatible** chat endpoint (OpenAI, LM Studio, vLLM, LiteLLM proxy, text-generation-webui, ...).
 
-- build a local **Chroma** knowledge base from all PDFs in this folder
-- query an **OpenAI-compatible** chat endpoint to generate **GitHub-friendly Markdown** summaries
+## Install
 
-## Purpose
-
-This repo folder contains lecture PDFs for a university course. The script `rag_summary.py` helps you quickly produce one Markdown summary per PDF, either for a single file or for the whole directory in one run.
-
-## Requirements
-
-- **Python >= 3.13**
-- An OpenAI-compatible API endpoint (examples: LM Studio, vLLM, LiteLLM proxy, text-generation-webui, etc.)
-
-Install dependencies:
+Requires **Python >= 3.10**.
 
 ```bash
-pip install -r requirements.txt
+# From GitHub
+pip install "git+https://github.com/beppSpedicato/accademic_assistant_summarizer.git"
+
+# From a local clone
+pip install .
 ```
 
-## Usage
+This installs the `academic-assistant` command (also runnable as `python -m academic_assistant`).
 
-### A) Build the PDFs RAG database (fresh ingest)
+> Chroma's default embedding model (~80 MB, ONNX all-MiniLM-L6-v2) is downloaded to `~/.cache/chroma` the first time you ingest or index.
 
-This scans `*.pdf`, extracts text with `pypdf`, and writes a Chroma DB to `./chroma_db`.
+## Configure (once per machine)
 
 ```bash
-python rag_summary.py --init
+academic-assistant config init
 ```
 
-### B) Summarize a single PDF
+The wizard asks for:
+
+| Setting | Example |
+|---|---|
+| Base URL of the OpenAI-compatible API | `http://localhost:4141/v1` |
+| Model name | `gpt-5.2` |
+| API key (typed hidden; leave empty if your endpoint doesn't need one) | `sk-...` |
+| Course subject (used in the prompts) | `computational linear algebra` |
+
+Press Enter to keep the value shown in brackets, so you can re-run `config init` to change a single setting. The configuration is shared by every subcommand and stored in (on macOS/Linux with owner-only `0600` permissions, since it holds the API key):
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/academic-assistant/config.toml` |
+| Linux | `~/.config/academic-assistant/config.toml` |
+| Windows | `%LOCALAPPDATA%\academic-assistant\config.toml` |
+
+`academic-assistant config show` prints the current values (API key masked). For a single run you can override the saved values with `--url`, `--model` and `--api-key` on `summarize` and `chat`.
+
+## Use
+
+Run the commands from the folder that contains your PDFs, or point them at it with `--workdir <dir>` (accepted before or after the subcommand). Everything the tool generates is written inside that folder.
 
 ```bash
-python rag_summary.py --summarize "example.pdf" --url "http://localhost:4141/v1" --model "your-model"
+# 1. Build the PDF RAG database (./chroma_db) from *.pdf
+academic-assistant ingest
+academic-assistant ingest --pdf-glob "slides/*.pdf"
+
+# 2. Summarize one PDF, or rebuild the database and summarize all of them
+academic-assistant summarize 01-SparseMatrices.pdf      # -> summaries/01-SparseMatrices.md
+academic-assistant summarize --all --pdf-glob "slides/*.pdf"
+
+# 3. Index the summaries for chat (incremental: only changed files are re-embedded)
+academic-assistant index                                 # -> ./chroma_db_summaries, summaries/manifest.json
+
+# 4. Ask questions over the summaries
+academic-assistant chat
 ```
 
-Outputs a Markdown file under `./summaries/` (e.g. `summaries/01-SparseMatrices.md`).
+Chat commands: `/reindex` updates the summaries index, `/clean` removes `.tmp/`, `/exit` quits. When run from a VS Code terminal with the `code` CLI available, each answer is also opened as a Markdown file under `.tmp/`.
 
-### C) Full run: rebuild PDF RAG + summarize every PDF
+### Options
 
-This is the “one command” mode: it rebuilds the DB, then loops through all matching PDFs and writes one `.md` per PDF.
+| Command | Option | Default |
+|---|---|---|
+| `ingest`, `summarize` | `--pdf-glob <glob>` | `*.pdf` |
+| `index` | `--md-glob <glob>` | `summaries/*.md` |
+| `index` | `--chunk-size <n>` / `--overlap <n>` | `3000` / `300` characters |
+| `chat` | `--k <n>` (retrieved chunks per question) | `8` |
+| `summarize`, `chat` | `--url`, `--model`, `--api-key` | saved config |
+
+Each summary follows the same structure: `# Title`, `## Key Concepts`, `## Detailed Notes`, `## Action Items / Study Questions`, with math as `$...$` / `$$...$$`.
+
+## Development
 
 ```bash
-python rag_summary.py --run-all --url "http://localhost:4141/v1" --model "your-model"
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest                                   # whole suite (no network, no LLM needed)
+pytest tests/test_config.py::test_save_load_roundtrip   # a single test
+python -m build                          # sdist + wheel in dist/
 ```
 
-### D) Chat over the generated summaries (RAG Q&A)
-
-After you have generated Markdown files under `./summaries/`, you can build a separate RAG index over those summaries and ask questions interactively.
-
-1) Build/update the summaries index (incremental)
-
-```bash
-python rag_chat_summaries.py --init
-```
-
-This creates/updates:
-- `./chroma_db_summaries/` (Chroma DB for summaries)
-- `./summaries/manifest.json` (path + sha256, for safe incremental updates)
-
-2) Start interactive chat
-
-```bash
-python rag_chat_summaries.py --chat --url "http://localhost:4141/v1" --model "your-model"
-```
-
-REPL commands:
-- `/reindex` rebuilds/updates the summaries index
-- `/exit` quits
-
-### Options (PDF summarizer)
-
-- `--init`: rebuild the RAG database from all PDFs
-- `--summarize <filename.pdf>`: summarize one PDF
-- `--run-all`: rebuild the RAG database and summarize each PDF
-- `--pdf-glob <glob>`: choose PDFs to include (default: `*.pdf`)
-- `--url <url>`: base URL for the OpenAI-compatible API (default: `http://localhost:4141/v1`)
-- `--model <model>`: model name (default: `gpt-5.2`)
-- `--api-key <key>`: API key if your proxy requires one (default: `dummy`)
-
-### Options (summaries chat)
-
-- `--init`: build/update the summaries RAG index + manifest
-- `--chat`: start the interactive REPL
-- `--md-glob <glob>`: which markdown files to index (default: `summaries/*.md`)
-- `--chunk-size <n>` / `--overlap <n>`: chunking settings for indexing
-- `--k <n>`: number of retrieved chunks per question
-- `--url`, `--model`, `--api-key`: same meaning as above
-
-## Export commands (add to PATH)
-
-This repo includes two wrapper commands under `./bin/`:
-
-- `bin/rag-pdf` → runs `rag_summary.py` (PDF → Markdown summaries)
-- `bin/rag-chat` → runs `rag_chat_summaries.py` (chat over `summaries/*.md`)
-
-### Claude Code custom skills
-
-The repository provides two custom Claude Code skills that wrap these scripts, allowing you to invoke them via the `/` skill syntax from any directory.
-
-- **rag-chat** – runs `./bin/rag-chat`
-- **rag-pdf** – runs `./bin/rag-pdf`
-
-Add the following JSON to your Claude Code project `settings.json` under the `customSkills` key:
-
-```json
-{
-  "customSkills": {
-    "rag-chat": {
-      "description": "Run the rag‑chat command from the repository",
-      "command": "./bin/rag-chat"
-    },
-    "rag-pdf": {
-      "description": "Run the rag‑pdf command from the repository",
-      "command": "./bin/rag-pdf"
-    }
-  }
-}
-```
-
-After restarting Claude Code the skills can be used as:
-
-```bash
-! /rag-pdf --summarize "01-SparseMatrices.pdf" --url "http://localhost:4141/v1" --model "your-model"
-! /rag-chat --run-all --url "http://localhost:4141/v1" --model "your-model"
-```
-
-### Make the commands available anywhere
-
-Add this repo's `bin/` directory to your shell `PATH`.
-
-**zsh** (`~/.zshrc`):
-
-```bash
-export PATH="/absolute/path/to/this/repo/bin:$PATH"
-```
-
-Then restart your terminal (or `source ~/.zshrc`) and you can run:
-
-```bash
-rag-pdf --help
-rag-chat --help
-```
-
-### Running against any folder (`--workdir`)
-
-Both commands accept `--workdir` to operate on a target directory, even if you run the command from somewhere else.
-
-Examples:
-
-```bash
-# Summarize PDFs located in /path/to/lectures
-rag-pdf --workdir "/path/to/lectures" --run-all --url "http://localhost:4141/v1" --model "your-model"
-
-# Build the summaries index and start a chat over /path/to/lectures/summaries/*.md
-rag-chat --workdir "/path/to/lectures" --init
-rag-chat --workdir "/path/to/lectures" --chat --url "http://localhost:4141/v1" --model "your-model"
-```
-
-## Notes
-
-- The summaries are written to the `summaries/` folder by default.
-- The summaries chat index is stored separately in `./chroma_db_summaries`.
+CI (`.github/workflows/tests.yml`) runs the suite on Linux, macOS and Windows with Python 3.10–3.13 and smoke-tests the built wheel.
