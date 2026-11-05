@@ -7,3 +7,7 @@ chroma_db_summaries/
 .tmp/
 *.pyc
 .env
+dist/
+build/
+*.egg-info/
+.pytest_cache/

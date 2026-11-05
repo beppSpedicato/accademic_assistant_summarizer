@@ -1,16 +1,14 @@
-import argparse
 import glob
 import os
 from pathlib import Path
 
-from utils.chroma_utils import get_chroma
+from .utils.chroma_utils import get_chroma
 from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
 from pypdf import PdfReader
 
-from utils.math_format import normalize_math_delimiters
-from utils.prompts import pdf_summary_prompt
-from dotenv import load_dotenv
+from .utils.math_format import normalize_math_delimiters
+from .utils.prompts import pdf_summary_prompt
 
 
 CHROMA_PATH = "./chroma_db"
@@ -138,70 +136,3 @@ def run_all_summaries(model_name: str, base_url: str, api_key: str, pdf_glob: st
         print("\n" + "=" * 80)
         print(f"Summarizing {pdf_file}...")
         create_summary(pdf_file, model_name, base_url, api_key, db=db)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Create RAG from PDFs and generate summaries via an OpenAI-compatible API"
-    )
-    parser.add_argument(
-        "--workdir",
-        type=str,
-        default=None,
-        help="Directory to run in (defaults to current directory)",
-    )
-    parser.add_argument(
-        "--init",
-        action="store_true",
-        help="Initialize the RAG database from all PDFs in the directory",
-    )
-    parser.add_argument("--summarize", type=str, help="Filename of the PDF to summarize")
-    parser.add_argument(
-        "--run-all",
-        action="store_true",
-        help="Rebuild the RAG from all PDFs and summarize each one",
-    )
-    parser.add_argument(
-        "--pdf-glob",
-        type=str,
-        default="*.pdf",
-        help="Glob pattern for PDFs (default: *.pdf)",
-    )
-    parser.add_argument(
-        "--url",
-        type=str,
-        default="http://localhost:4141/v1",
-        help="Base URL for the OpenAI-compatible API",
-    )
-    parser.add_argument("--model", type=str, default="gpt-5.2", help="Name of the model")
-    parser.add_argument(
-        "--api-key",
-        type=str,
-        default="dummy",
-        help="API key if your reverse proxy requires one",
-    )
-
-    args = parser.parse_args()
-    # Load environment variables from .env if present
-    repo_root = Path(__file__).resolve().parent.parent                                                                      
-    load_dotenv(repo_root / ".env")
-    
-    # Override defaults with environment variables when not explicitly provided
-    if not args.url or args.url == "http://localhost:4141/v1":
-        args.url = os.getenv("BASE_URL", args.url)
-    if not args.model or args.model == "gpt-5.2":
-        args.model = os.getenv("MODEL", args.model)
-    if not args.api_key or args.api_key == "dummy":
-        args.api_key = os.getenv("API_KEY", args.api_key)
-
-    if args.workdir:
-        os.chdir(args.workdir)
-
-    if args.init:
-        _ensure_db(pdf_glob=args.pdf_glob, rebuild=True)
-    elif args.run_all:
-        run_all_summaries(args.model, args.url, args.api_key, pdf_glob=args.pdf_glob)
-    elif args.summarize:
-        create_summary(args.summarize, args.model, args.url, args.api_key)
-    else:
-        parser.print_help()
