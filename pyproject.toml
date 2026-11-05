@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "academic-assistant"
+dynamic = ["version"]
+description = "Summarize lecture PDFs into Markdown and chat over the summaries with a local Chroma RAG index and any OpenAI-compatible API."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "beppSpedicato" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Topic :: Education",
+]
+dependencies = [
+    "chromadb>=0.5.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-chroma>=0.2.0",
+    "pypdf>=4.0.0",
+    "rich>=13.7.0",
+    "platformdirs>=3.0",
+    "tomli>=2.0; python_version < '3.11'",
+    "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "build>=1.0"]
+
+[project.scripts]
+academic-assistant = "academic_assistant.cli:main"
+
+[project.urls]
+Repository = "https://github.com/beppSpedicato/accademic_assistant_summarizer"
+
+[tool.hatch.version]
+path = "src/academic_assistant/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/academic_assistant"]
+
+[tool.hatch.build.targets.sdist]
+# Explicit allow-list so lecture PDFs, summaries and local DBs never end up in a release.
+include = ["src/academic_assistant", "tests", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import from src/ so the suite runs even without (or with a broken) editable install.
+pythonpath = ["src"]

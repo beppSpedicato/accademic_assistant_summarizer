@@ -1,17 +1,14 @@
-import argparse
 import glob
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
-
-from utils.chroma_utils import get_chroma
-from utils.manifest import fingerprint, load_manifest, utc_now_iso, write_manifest_atomic
-from utils.math_format import normalize_math_delimiters
-from utils.prompts import summaries_qa_prompt
-from utils.vscode_utils import clean_tmp_dir, open_markdown_in_vscode_tmp
+from . import llm
+from .config import Config
+from .utils.chroma_utils import get_chroma
+from .utils.manifest import fingerprint, load_manifest, utc_now_iso, write_manifest_atomic
+from .utils.math_format import normalize_math_delimiters
+from .utils.prompts import summaries_qa_prompt
+from .utils.vscode_utils import clean_tmp_dir, open_markdown_in_vscode_tmp
 
 
 CHROMA_PATH = "./chroma_db_summaries"
@@ -128,11 +125,7 @@ def update_index(md_glob: str = DEFAULT_MD_GLOB, chunk_size: int = 3000, overlap
     print(f"Manifest: {MANIFEST_PATH}")
 
 
-def _build_qa_prompt():
-    return summaries_qa_prompt()
-
-
-def answer_question(question: str, model_name: str, base_url: str, api_key: str, k: int = 8) -> str:
+def answer_question(question: str, config: Config, k: int = 8) -> str:
     db = _get_db()
     retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": k})
 
@@ -145,16 +138,10 @@ def answer_question(question: str, model_name: str, base_url: str, api_key: str,
 
     context = "\n".join(context_parts).strip()
 
-    prompt = _build_qa_prompt()
-    messages = prompt.format_messages(context=context, question=question)
+    messages = summaries_qa_prompt(config.subject).format_messages(context=context, question=question)
 
-    llm = ChatOpenAI(
-        model=model_name,
-        base_url=base_url,
-        api_key=api_key,
-        temperature=0.2,
-    )
-    resp = llm.invoke(messages)
+    chat_model = llm.make_chat_model(config.model, config.base_url, config.api_key)
+    resp = chat_model.invoke(messages)
     return normalize_math_delimiters(resp.content)
 
 
@@ -180,7 +167,7 @@ def _render_markdown(console, md_text: str) -> None:
         console.print(md_text)
 
 
-def chat_repl(model_name: str, base_url: str, api_key: str, k: int = 8) -> None:
+def chat_repl(config: Config, k: int = 8) -> None:
     console = _try_rich_console()
 
     banner = (
@@ -214,7 +201,7 @@ def chat_repl(model_name: str, base_url: str, api_key: str, k: int = 8) -> None:
             continue
 
         try:
-            out = answer_question(q, model_name=model_name, base_url=base_url, api_key=api_key, k=k)
+            out = answer_question(q, config, k=k)
             _render_markdown(console, out)
             open_markdown_in_vscode_tmp(out, filename_hint="rag_chat_answer.md", unique=True)
         except Exception as e:
@@ -223,85 +210,3 @@ def chat_repl(model_name: str, base_url: str, api_key: str, k: int = 8) -> None:
                 console.print(msg)
             else:
                 print(msg)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Chat with a RAG index built from summaries/*.md via an OpenAI-compatible API"
-    )
-    parser.add_argument(
-        "--workdir",
-        type=str,
-        default=None,
-        help="Directory to run in (defaults to current directory)",
-    )
-    parser.add_argument(
-        "--init",
-        action="store_true",
-        help="Build/update the summaries RAG index and manifest",
-    )
-    parser.add_argument(
-        "--chat",
-        action="store_true",
-        help="Start an interactive chat REPL over the summaries index",
-    )
-    parser.add_argument(
-        "--md-glob",
-        type=str,
-        default=DEFAULT_MD_GLOB,
-        help=f"Glob for markdown files (default: {DEFAULT_MD_GLOB})",
-    )
-    parser.add_argument(
-        "--chunk-size",
-        type=int,
-        default=3000,
-        help="Chunk size in characters for indexing (default: 3000)",
-    )
-    parser.add_argument(
-        "--overlap",
-        type=int,
-        default=300,
-        help="Chunk overlap in characters for indexing (default: 300)",
-    )
-    parser.add_argument(
-        "--k",
-        type=int,
-        default=8,
-        help="Number of retrieved chunks per question (default: 8)",
-    )
-    parser.add_argument(
-        "--url",
-        type=str,
-        default="http://localhost:4141/v1",
-        help="Base URL for the OpenAI-compatible API",
-    )
-    parser.add_argument("--model", type=str, default="gpt-5.2", help="Name of the model")
-    parser.add_argument(
-        "--api-key",
-        type=str,
-        default="dummy",
-        help="API key if your reverse proxy requires one",
-    )
-
-    args = parser.parse_args()
-    repo_root = Path(__file__).resolve().parent.parent
-    load_dotenv(repo_root / ".env")
-    # Override defaults with environment variables when not explicitly provided
-    if not args.url or args.url == "http://localhost:4141/v1":
-        args.url = os.getenv("BASE_URL", args.url)
-    if not args.model or args.model == "gpt-5.2":
-        args.model = os.getenv("MODEL", args.model)
-    if not args.api_key or args.api_key == "dummy":
-        args.api_key = os.getenv("API_KEY", args.api_key)
-
-    if args.workdir:
-        import os
-
-        os.chdir(args.workdir)
-
-    if args.init:
-        update_index(md_glob=args.md_glob, chunk_size=args.chunk_size, overlap=args.overlap)
-    elif args.chat:
-        chat_repl(model_name=args.model, base_url=args.url, api_key=args.api_key, k=args.k)
-    else:
-        parser.print_help()
