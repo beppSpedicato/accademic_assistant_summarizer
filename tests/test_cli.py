@@ -101,6 +101,7 @@ def test_config_init_then_show(monkeypatch, capsys):
 
 
 def test_full_workflow_with_workdir(tmp_path, monkeypatch, fake_llm, capsys):
+    monkeypatch.chdir(tmp_path)  # main() chdirs via --workdir; restore the cwd afterwards
     course = tmp_path / "course"
     make_pdf(course / "slides/01-power.pdf", [["Power method", "Dominant eigenvalue"]])
     make_pdf(course / "slides/02-krylov.pdf", [["Krylov subspaces", "Arnoldi iteration"]])

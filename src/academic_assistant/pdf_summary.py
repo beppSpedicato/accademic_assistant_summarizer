@@ -8,7 +8,7 @@ from pypdf import PdfReader
 
 from . import llm
 from .config import Config
-from .utils.chroma_utils import get_chroma, remove_persist_dir
+from .utils.chroma_utils import get_chroma, open_empty_chroma
 from .utils.math_format import normalize_math_delimiters
 from .utils.prompts import pdf_summary_prompt
 
@@ -44,10 +44,7 @@ def ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False) -> Tuple[Optional[
         print(f"No PDF files matched: {pdf_glob}")
         return None, []
 
-    if rebuild and os.path.exists(CHROMA_PATH):
-        remove_persist_dir(CHROMA_PATH)
-
-    if os.path.exists(CHROMA_PATH):
+    if os.path.exists(CHROMA_PATH) and not rebuild:
         print(f"Using existing Chroma DB at {CHROMA_PATH}...")
         return get_chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME), pdf_files
 
@@ -69,7 +66,7 @@ def ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False) -> Tuple[Optional[
         return None, pdf_files
 
     # Chroma uses its default embedding function (see utils/chroma_utils.py).
-    db = get_chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME)
+    db = open_empty_chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME)
     db.add_texts(texts=texts, metadatas=metadatas)
     print("RAG database created successfully.")
     return db, pdf_files

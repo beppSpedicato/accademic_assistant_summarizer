@@ -5,6 +5,7 @@ import pytest
 from academic_assistant import pdf_summary
 from academic_assistant.config import Config
 from academic_assistant.pdf_summary import create_summary, ensure_db, run_all_summaries, source_key
+from academic_assistant.utils import chroma_utils
 from pdf_factory import make_pdf
 
 CONFIG = Config(base_url="http://llm.test/v1", model="test-model", api_key="k", subject="numerical methods")
@@ -65,6 +66,28 @@ def test_ensure_db_reuses_existing_and_rebuild_replaces(lectures):
     assert sources == {"03-top.pdf"}
 
 
+def test_rebuild_never_deletes_files_of_an_open_db(lectures, monkeypatch):
+    # Regression: rebuild removed ./chroma_db while this process still had the
+    # index open, which Windows refuses (WinError 32). Simulate that everywhere.
+    def windows_rmtree(path, *args, **kwargs):
+        raise PermissionError(32, "The process cannot access the file because it is being used by another process")
+
+    held_open, _ = ensure_db("lectures/*.pdf")
+    monkeypatch.setattr(chroma_utils.shutil, "rmtree", windows_rmtree)
+
+    db, _ = ensure_db("lectures/*.pdf", rebuild=True)
+    assert db._collection.count() == 2  # replaced, not duplicated
+    assert held_open._collection.count() == 2
+
+
+def test_rebuild_replaces_an_unreadable_db(lectures):
+    Path(pdf_summary.CHROMA_PATH).mkdir()
+    (Path(pdf_summary.CHROMA_PATH) / "chroma.sqlite3").write_bytes(b"not a sqlite database" * 100)
+
+    db, _ = ensure_db("lectures/*.pdf", rebuild=True)
+    assert db._collection.count() == 2
+
+
 def test_summary_from_subfolder_glob_gets_its_own_context(lectures, fake_llm):
     # Regression: the filter used the bare file name while metadata stored the
     # glob path, so subfolder PDFs were summarized from an empty context.
@@ -117,8 +140,9 @@ def test_llm_error_is_reported_and_run_all_continues(lectures, fake_llm, capsys)
     fake_llm.error = ConnectionError("Connection error.")
     assert run_all_summaries(CONFIG, pdf_glob="lectures/*.pdf") is False
     out = capsys.readouterr().out
-    assert "LLM request for lectures/01-power.pdf failed: Connection error." in out
-    assert "LLM request for lectures/02-krylov.pdf failed" in out
+    # Messages show the path as glob returned it (backslashes on Windows).
+    assert f"LLM request for {Path('lectures/01-power.pdf')} failed: Connection error." in out
+    assert f"LLM request for {Path('lectures/02-krylov.pdf')} failed" in out
     assert not Path("summaries").exists()
 
 
