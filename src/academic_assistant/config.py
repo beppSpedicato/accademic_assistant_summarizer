@@ -114,6 +114,11 @@ def run_wizard(
     return saved
 
 
+def show_config(path: Optional[Path] = None) -> str:
+    path = path or config_path()
+    return format_config(load_config(path), path)
+
+
 def format_config(config: Config, path: Path) -> str:
     return "\n".join(
         [

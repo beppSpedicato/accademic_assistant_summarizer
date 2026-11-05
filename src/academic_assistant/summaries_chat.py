@@ -2,7 +2,6 @@ import glob
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-
 from . import llm
 from .config import Config
 from .utils.chroma_utils import get_chroma

@@ -44,3 +44,8 @@ packages = ["src/academic_assistant"]
 [tool.hatch.build.targets.sdist]
 # Explicit allow-list so lecture PDFs, summaries and local DBs never end up in a release.
 include = ["src/academic_assistant", "tests", "README.md", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import from src/ so the suite runs even without (or with a broken) editable install.
+pythonpath = ["src"]

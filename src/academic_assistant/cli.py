@@ -4,7 +4,7 @@ import sys
 from typing import List, Optional
 
 from . import __version__
-from .config import ConfigError, config_path, format_config, load_config, resolve_config, run_wizard
+from .config import ConfigError, resolve_config, run_wizard, show_config
 
 
 def _add_llm_args(parser: argparse.ArgumentParser) -> None:
@@ -77,7 +77,7 @@ def _dispatch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
         if args.config_command == "init":
             run_wizard()
         else:
-            print(format_config(load_config(), config_path()))
+            print(show_config())
         return 0
 
     if args.command == "summarize" and not args.all and not args.file:

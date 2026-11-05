@@ -1,6 +1,5 @@
 import glob
 import os
-import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -9,7 +8,7 @@ from pypdf import PdfReader
 
 from . import llm
 from .config import Config
-from .utils.chroma_utils import get_chroma
+from .utils.chroma_utils import get_chroma, remove_persist_dir
 from .utils.math_format import normalize_math_delimiters
 from .utils.prompts import pdf_summary_prompt
 
@@ -46,7 +45,7 @@ def ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False) -> Tuple[Optional[
         return None, []
 
     if rebuild and os.path.exists(CHROMA_PATH):
-        shutil.rmtree(CHROMA_PATH)
+        remove_persist_dir(CHROMA_PATH)
 
     if os.path.exists(CHROMA_PATH):
         print(f"Using existing Chroma DB at {CHROMA_PATH}...")
