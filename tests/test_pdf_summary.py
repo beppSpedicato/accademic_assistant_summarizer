@@ -113,5 +113,14 @@ def test_run_all_reports_partial_failure(workdir, fake_llm):
     assert not Path("summaries/b.md").exists()
 
 
+def test_llm_error_is_reported_and_run_all_continues(lectures, fake_llm, capsys):
+    fake_llm.error = ConnectionError("Connection error.")
+    assert run_all_summaries(CONFIG, pdf_glob="lectures/*.pdf") is False
+    out = capsys.readouterr().out
+    assert "LLM request for lectures/01-power.pdf failed: Connection error." in out
+    assert "LLM request for lectures/02-krylov.pdf failed" in out
+    assert not Path("summaries").exists()
+
+
 def test_run_all_with_no_pdfs(workdir, fake_llm):
     assert run_all_summaries(CONFIG) is False

@@ -111,7 +111,11 @@ def create_summary(
     print(f"Querying LLM '{config.model}' at {config.base_url}...")
     chat_model = llm.make_chat_model(config.model, config.base_url, config.api_key)
     messages = pdf_summary_prompt(config.subject).format_messages(context=context)
-    response = chat_model.invoke(messages)
+    try:
+        response = chat_model.invoke(messages)
+    except Exception as e:  # connection/auth/model errors: report and let --all continue
+        print(f"Error: the LLM request for {filename} failed: {e}")
+        return None
 
     out_dir = Path(output_path) if output_path else Path(".")
     out_dir.mkdir(parents=True, exist_ok=True)
