@@ -2,8 +2,8 @@ import glob
 import os
 from pathlib import Path
 
+from . import llm
 from .utils.chroma_utils import get_chroma
-from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
 from pypdf import PdfReader
 
@@ -95,12 +95,7 @@ def create_summary(filename: str, model_name: str, base_url: str, api_key: str, 
     prompt = pdf_summary_prompt()
 
     print(f"Connecting to LLM '{model_name}' at {base_url}...")
-    llm = ChatOpenAI(
-        model=model_name,
-        base_url=base_url,
-        api_key=api_key,
-        temperature=0.2,
-    )
+    chat_model = llm.make_chat_model(model_name, base_url, api_key)
 
     retriever = db.as_retriever(
         search_type="similarity",
@@ -113,7 +108,7 @@ def create_summary(filename: str, model_name: str, base_url: str, api_key: str, 
 
     print("Querying the LLM...")
     messages = prompt.format_messages(context=context)
-    response = llm.invoke(messages)
+    response = chat_model.invoke(messages)
 
     if output_path:
         os.makedirs(output_path, exist_ok=True)

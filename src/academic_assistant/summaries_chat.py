@@ -3,8 +3,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from langchain_openai import ChatOpenAI
 
+from . import llm
 from .utils.chroma_utils import get_chroma
 from .utils.manifest import fingerprint, load_manifest, utc_now_iso, write_manifest_atomic
 from .utils.math_format import normalize_math_delimiters
@@ -146,13 +146,8 @@ def answer_question(question: str, model_name: str, base_url: str, api_key: str,
     prompt = _build_qa_prompt()
     messages = prompt.format_messages(context=context, question=question)
 
-    llm = ChatOpenAI(
-        model=model_name,
-        base_url=base_url,
-        api_key=api_key,
-        temperature=0.2,
-    )
-    resp = llm.invoke(messages)
+    chat_model = llm.make_chat_model(model_name, base_url, api_key)
+    resp = chat_model.invoke(messages)
     return normalize_math_delimiters(resp.content)
 
 

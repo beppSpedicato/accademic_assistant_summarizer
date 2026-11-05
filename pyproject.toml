@@ -21,7 +21,9 @@ dependencies = [
     "langchain-chroma>=0.2.0",
     "pypdf>=4.0.0",
     "rich>=13.7.0",
-    "python-dotenv>=1.0.0",
+    "platformdirs>=3.0",
+    "tomli>=2.0; python_version < '3.11'",
+    "tomli-w>=1.0",
 ]
 
 [project.optional-dependencies]
