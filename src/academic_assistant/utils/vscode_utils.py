@@ -14,8 +14,8 @@ def is_code_cli_available() -> bool:
 def is_running_inside_vscode() -> bool:
     """Best-effort check whether this process is launched from VS Code."""
 
-    # TODO: This is a very naive check. We might want to check for specific environment variables that VS Code sets, or other heuristics.
-    return True
+    # VS Code's integrated terminal (and forks like Cursor) set TERM_PROGRAM=vscode.
+    return os.environ.get("TERM_PROGRAM") == "vscode"
 
 
 def open_markdown_in_vscode_tmp(

@@ -92,23 +92,23 @@ def _dispatch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
 
     # Imported lazily so `--help` stays fast (chromadb/langchain are heavy).
     if args.command == "ingest":
-        from .pdf_summary import _ensure_db
+        from .pdf_summary import ensure_db
 
-        _ensure_db(pdf_glob=args.pdf_glob, rebuild=True)
-    elif args.command == "summarize":
+        db, _ = ensure_db(pdf_glob=args.pdf_glob, rebuild=True)
+        return 0 if db is not None else 1
+    if args.command == "summarize":
         from .pdf_summary import create_summary, run_all_summaries
 
         if args.all:
-            run_all_summaries(config.model, config.base_url, config.api_key, pdf_glob=args.pdf_glob)
-        else:
-            create_summary(args.file, config.model, config.base_url, config.api_key)
-    elif args.command == "index":
+            return 0 if run_all_summaries(config, pdf_glob=args.pdf_glob) else 1
+        return 0 if create_summary(args.file, config, pdf_glob=args.pdf_glob) else 1
+    if args.command == "index":
         from .summaries_chat import update_index
 
         update_index(md_glob=args.md_glob, chunk_size=args.chunk_size, overlap=args.overlap)
     elif args.command == "chat":
         from .summaries_chat import chat_repl
 
-        chat_repl(model_name=config.model, base_url=config.base_url, api_key=config.api_key, k=args.k)
+        chat_repl(config, k=args.k)
 
     return 0

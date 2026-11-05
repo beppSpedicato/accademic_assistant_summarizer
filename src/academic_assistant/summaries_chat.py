@@ -1,10 +1,10 @@
 import glob
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
 from . import llm
+from .config import Config
 from .utils.chroma_utils import get_chroma
 from .utils.manifest import fingerprint, load_manifest, utc_now_iso, write_manifest_atomic
 from .utils.math_format import normalize_math_delimiters
@@ -126,11 +126,7 @@ def update_index(md_glob: str = DEFAULT_MD_GLOB, chunk_size: int = 3000, overlap
     print(f"Manifest: {MANIFEST_PATH}")
 
 
-def _build_qa_prompt():
-    return summaries_qa_prompt()
-
-
-def answer_question(question: str, model_name: str, base_url: str, api_key: str, k: int = 8) -> str:
+def answer_question(question: str, config: Config, k: int = 8) -> str:
     db = _get_db()
     retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": k})
 
@@ -143,10 +139,9 @@ def answer_question(question: str, model_name: str, base_url: str, api_key: str,
 
     context = "\n".join(context_parts).strip()
 
-    prompt = _build_qa_prompt()
-    messages = prompt.format_messages(context=context, question=question)
+    messages = summaries_qa_prompt(config.subject).format_messages(context=context, question=question)
 
-    chat_model = llm.make_chat_model(model_name, base_url, api_key)
+    chat_model = llm.make_chat_model(config.model, config.base_url, config.api_key)
     resp = chat_model.invoke(messages)
     return normalize_math_delimiters(resp.content)
 
@@ -173,7 +168,7 @@ def _render_markdown(console, md_text: str) -> None:
         console.print(md_text)
 
 
-def chat_repl(model_name: str, base_url: str, api_key: str, k: int = 8) -> None:
+def chat_repl(config: Config, k: int = 8) -> None:
     console = _try_rich_console()
 
     banner = (
@@ -207,7 +202,7 @@ def chat_repl(model_name: str, base_url: str, api_key: str, k: int = 8) -> None:
             continue
 
         try:
-            out = answer_question(q, model_name=model_name, base_url=base_url, api_key=api_key, k=k)
+            out = answer_question(q, config, k=k)
             _render_markdown(console, out)
             open_markdown_in_vscode_tmp(out, filename_hint="rag_chat_answer.md", unique=True)
         except Exception as e:

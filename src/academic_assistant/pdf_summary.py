@@ -1,12 +1,15 @@
 import glob
 import os
+import shutil
 from pathlib import Path
+from typing import List, Optional, Tuple
 
-from . import llm
-from .utils.chroma_utils import get_chroma
 from langchain_chroma import Chroma
 from pypdf import PdfReader
 
+from . import llm
+from .config import Config
+from .utils.chroma_utils import get_chroma
 from .utils.math_format import normalize_math_delimiters
 from .utils.prompts import pdf_summary_prompt
 
@@ -15,7 +18,7 @@ CHROMA_PATH = "./chroma_db"
 COLLECTION_NAME = "slides"
 
 
-def _load_pdf_pages(pdf_path: str):
+def _load_pdf_pages(pdf_path: str) -> str:
     # Avoid LangChain PDF loaders to prevent pulling in langchain_text_splitters
     # (which imports sentence-transformers/torch in your environment).
     reader = PdfReader(pdf_path)
@@ -28,24 +31,22 @@ def _load_pdf_pages(pdf_path: str):
     return "\n\n".join(texts)
 
 
-def _ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False):
+def source_key(path: str) -> str:
+    """Key stored as `source` metadata; ingest and retrieval must agree on it."""
+    try:
+        return Path(os.path.relpath(path)).as_posix()
+    except ValueError:  # Windows: path on another drive than the working dir
+        return Path(path).resolve().as_posix()
+
+
+def ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False) -> Tuple[Optional[Chroma], List[str]]:
     pdf_files = sorted(glob.glob(pdf_glob))
     if not pdf_files:
-        print("No PDF files found in the current directory.")
+        print(f"No PDF files matched: {pdf_glob}")
         return None, []
 
-    # IMPORTANT: We avoid sentence-transformers/torch here to keep installs light and
-    # to prevent the import chain that breaks on some environments.
-    # Chroma will use its default embedding function.
-
     if rebuild and os.path.exists(CHROMA_PATH):
-        # Safe-delete local DB folder
-        for root, dirs, files in os.walk(CHROMA_PATH, topdown=False):
-            for name in files:
-                os.remove(os.path.join(root, name))
-            for name in dirs:
-                os.rmdir(os.path.join(root, name))
-        os.rmdir(CHROMA_PATH)
+        shutil.rmtree(CHROMA_PATH)
 
     if os.path.exists(CHROMA_PATH):
         print(f"Using existing Chroma DB at {CHROMA_PATH}...")
@@ -57,77 +58,80 @@ def _ensure_db(pdf_glob: str = "*.pdf", rebuild: bool = False):
     for pdf_file in pdf_files:
         print(f"Loading {pdf_file}...")
         text = _load_pdf_pages(pdf_file)
-        if not isinstance(text, str):
-            text = "" if text is None else str(text)
-            
         text = text.encode("utf-8", "surrogatepass").decode("utf-8", "replace")
         if text.strip():
             texts.append(text)
-            metadatas.append({"source": pdf_file})
+            metadatas.append({"source": source_key(pdf_file)})
+        else:
+            print(f"Warning: no text could be extracted from {pdf_file} (scanned PDF?).")
 
     if not texts:
         print("No content could be extracted from the PDFs.")
         return None, pdf_files
 
-
-    db = Chroma.from_texts(
-        texts=texts,
-        metadatas=metadatas,
-        embedding=None,
-        persist_directory=CHROMA_PATH,
-        collection_name=COLLECTION_NAME,
-    )
+    # Chroma uses its default embedding function (see utils/chroma_utils.py).
+    db = get_chroma(persist_directory=CHROMA_PATH, collection_name=COLLECTION_NAME)
+    db.add_texts(texts=texts, metadatas=metadatas)
     print("RAG database created successfully.")
     return db, pdf_files
 
 
-def create_summary(filename: str, model_name: str, base_url: str, api_key: str, db=None, output_path='summaries'):
+def create_summary(
+    filename: str,
+    config: Config,
+    db: Optional[Chroma] = None,
+    pdf_glob: str = "*.pdf",
+    output_path: str = "summaries",
+) -> Optional[Path]:
+    """Summarize one PDF; returns the written markdown path, or None on failure."""
     file_path = Path(filename)
     if not file_path.exists():
         print(f"Error: File {filename} not found.")
-        return
+        return None
 
     if db is None:
-        db, _ = _ensure_db()
+        db, _ = ensure_db(pdf_glob=pdf_glob)
         if db is None:
-            return
-
-    prompt = pdf_summary_prompt()
-
-    print(f"Connecting to LLM '{model_name}' at {base_url}...")
-    chat_model = llm.make_chat_model(model_name, base_url, api_key)
+            return None
 
     retriever = db.as_retriever(
         search_type="similarity",
-        search_kwargs={"k": 8, "filter": {"source": file_path.name}},
+        search_kwargs={"k": 8, "filter": {"source": source_key(filename)}},
     )
 
     print("Retrieving context...")
     docs = retriever.invoke("Summarize the document")
+    if not docs:
+        print(
+            f"Error: {filename} is not in the RAG database. "
+            f"Run `academic-assistant ingest --pdf-glob ...` with a glob that includes it."
+        )
+        return None
     context = "\n\n".join(d.page_content for d in docs)
 
-    print("Querying the LLM...")
-    messages = prompt.format_messages(context=context)
+    print(f"Querying LLM '{config.model}' at {config.base_url}...")
+    chat_model = llm.make_chat_model(config.model, config.base_url, config.api_key)
+    messages = pdf_summary_prompt(config.subject).format_messages(context=context)
     response = chat_model.invoke(messages)
 
-    if output_path:
-        os.makedirs(output_path, exist_ok=True)
-        output_filename = Path(output_path) / f"{file_path.stem}.md"
-    else:
-        output_filename = f"{file_path.stem}.md"
-        
-    with open(output_filename, "w", encoding="utf-8") as f:
-        f.write(normalize_math_delimiters(response.content))
+    out_dir = Path(output_path) if output_path else Path(".")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_filename = out_dir / f"{file_path.stem}.md"
+    output_filename.write_text(normalize_math_delimiters(response.content), encoding="utf-8")
 
     print(f"Summary successfully created and saved to {output_filename}")
+    return output_filename
 
 
-def run_all_summaries(model_name: str, base_url: str, api_key: str, pdf_glob: str = "*.pdf"):
-    db, pdf_files = _ensure_db(pdf_glob=pdf_glob, rebuild=True)
+def run_all_summaries(config: Config, pdf_glob: str = "*.pdf") -> bool:
+    """Rebuild the DB and summarize every PDF; returns True if all succeeded."""
+    db, pdf_files = ensure_db(pdf_glob=pdf_glob, rebuild=True)
     if db is None:
-        return
+        return False
 
+    ok = True
     for pdf_file in pdf_files:
         print("\n" + "=" * 80)
         print(f"Summarizing {pdf_file}...")
-        create_summary(pdf_file, model_name, base_url, api_key, db=db)
+        ok = create_summary(pdf_file, config, db=db) is not None and ok
+    return ok

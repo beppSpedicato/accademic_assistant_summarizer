@@ -1,9 +1,9 @@
 from langchain_core.prompts import ChatPromptTemplate
 
 
-def pdf_summary_prompt() -> ChatPromptTemplate:
+def pdf_summary_prompt(subject: str) -> ChatPromptTemplate:
     return ChatPromptTemplate.from_template(
-        r"""You are an expert academic assistant.
+        r"""You are an expert academic assistant for a university course on {subject}.
 
 You MUST format your response exactly like this template:
 
@@ -26,12 +26,12 @@ Math formatting rules (strict):
 Context from the document:
 {context}
 """
-    )
+    ).partial(subject=subject)
 
 
-def summaries_qa_prompt() -> ChatPromptTemplate:
+def summaries_qa_prompt(subject: str) -> ChatPromptTemplate:
     return ChatPromptTemplate.from_template(
-        r"""You are an expert academic tutor for computational linear algebra and related topics.
+        r"""You are an expert academic tutor for {subject} and related topics.
 
 You answer questions using the provided context excerpts from course summary notes.
 
@@ -64,4 +64,4 @@ Context:
 User question:
 {question}
 """
-    )
+    ).partial(subject=subject)
